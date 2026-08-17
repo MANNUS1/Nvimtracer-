@@ -50,8 +50,18 @@ NVIM_LUA_DIR="$HOME/.config/nvim/lua"
 mkdir -p "$NVIM_LUA_DIR"
 cp nvim_tracker.lua "$NVIM_LUA_DIR/agy_tracker.lua"
 
-echo "Instalación completada."
-echo "========================================="
-echo "Para activar el plugin en Neovim, agrega la siguiente línea a tu init.lua:"
-echo 'require("agy_tracker").setup()'
-echo "========================================="
+NVIM_INIT="$HOME/.config/nvim/init.lua"
+if [ ! -f "$NVIM_INIT" ]; then
+    touch "$NVIM_INIT"
+fi
+
+if ! grep -q 'require("agy_tracker").setup()' "$NVIM_INIT"; then
+    echo "" >> "$NVIM_INIT"
+    echo '-- Antigravity Neovim Tracker' >> "$NVIM_INIT"
+    echo 'require("agy_tracker").setup()' >> "$NVIM_INIT"
+    echo "✓ Plugin inyectado automáticamente en $NVIM_INIT"
+else
+    echo "✓ El plugin ya estaba inyectado en $NVIM_INIT"
+fi
+
+echo "Instalación y configuración completadas."
