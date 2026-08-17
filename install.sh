@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 set -e
 
-echo "Instalando sistema global de tracking Neovim <-> Antigravity..."
+echo "Instalando Usertracker Event Bus (Neovim <-> Antigravity)..."
 
-# 1. Instalar Hook Global de Antigravity
+# 1. Crear directorios globales
+USERTRACKER_DIR="$HOME/.local/share/usertracker"
+SPOOL_DIR="$USERTRACKER_DIR/spool"
+mkdir -p "$SPOOL_DIR"
+
+# 2. Instalar Hook Global de Antigravity
 AGY_CONFIG_DIR="$HOME/.gemini/config"
-HOOK_SCRIPT="$AGY_CONFIG_DIR/scripts/nvim_tracker_hook.py"
+HOOK_SCRIPT="$AGY_CONFIG_DIR/scripts/usertracker_hook.py"
 
 mkdir -p "$AGY_CONFIG_DIR/scripts"
 cp agy_hook.py "$HOOK_SCRIPT"
@@ -20,7 +25,6 @@ fi
 python3 -c '
 import json
 import sys
-import os
 
 hook_path = sys.argv[1]
 script_path = sys.argv[2]
@@ -31,21 +35,25 @@ try:
 except:
     data = {}
 
-if "nvim-tracker" not in data:
-    data["nvim-tracker"] = {}
+if "usertracker" not in data:
+    data["usertracker"] = {}
 
-data["nvim-tracker"]["PreInvocation"] = [
+data["usertracker"]["PreInvocation"] = [
     {
         "type": "command",
         "command": script_path
     }
 ]
 
+# Remover viejo hook si existe
+if "nvim-tracker" in data:
+    del data["nvim-tracker"]
+
 with open(hook_path, "w") as f:
     json.dump(data, f, indent=2)
 ' "$HOOKS_JSON" "$HOOK_SCRIPT"
 
-# 2. Instalar el plugin de Neovim
+# 3. Instalar el plugin de Neovim
 NVIM_LUA_DIR="$HOME/.config/nvim/lua"
 mkdir -p "$NVIM_LUA_DIR"
 cp nvim_tracker.lua "$NVIM_LUA_DIR/agy_tracker.lua"
@@ -64,4 +72,4 @@ else
     echo "✓ El plugin ya estaba inyectado en $NVIM_INIT"
 fi
 
-echo "Instalación y configuración completadas."
+echo "Instalación de Usertracker completada con éxito."

@@ -3,9 +3,8 @@ import sys
 import json
 import os
 import glob
-import uuid
 
-MAX_DIFF_LENGTH = 2000  # Character limit for a single diff to prevent context blowout
+MAX_DIFF_LENGTH = 2000
 
 def emit_empty_and_exit():
     print(json.dumps({}))
@@ -24,37 +23,45 @@ def main():
     if not workspaces:
         emit_empty_and_exit()
 
-    workspace = workspaces[0]
-    agents_dir = os.path.join(workspace, ".agents")
-    state_files = glob.glob(os.path.join(agents_dir, "nvim_state_*.json"))
+    active_workspace = os.path.abspath(workspaces[0])
+    
+    spool_dir = os.path.expanduser("~/.local/share/usertracker/spool")
+    if not os.path.exists(spool_dir):
+        emit_empty_and_exit()
 
+    state_files = glob.glob(os.path.join(spool_dir, "*.json"))
     if not state_files:
         emit_empty_and_exit()
 
     changes = []
     
     for original_fpath in state_files:
-        # 1. Atomic rename to prevent race conditions (Data Loss prevention)
-        processing_fpath = f"{original_fpath}.processing.{uuid.uuid4().hex}"
+        basename = os.path.basename(original_fpath)
+        
+        # Filtro de I/O de alta velocidad (sin abrir el archivo)
+        if "@@_" in basename:
+            encoded_repo = basename.split("@@_")[0]
+            event_repo = encoded_repo.replace("@@", "/")
+            if not (active_workspace.startswith(event_repo) or event_repo.startswith(active_workspace)):
+                continue # No es nuestro repo, ignorar (dejamos el archivo para la otra instancia)
+                
+        processing_fpath = f"{original_fpath}.processing"
         try:
             os.rename(original_fpath, processing_fpath)
-        except Exception:
-            # File might have been processed by another hook instance
+        except OSError:
             continue
             
         try:
             with open(processing_fpath, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        # 2. Poison pill prevention (isolate exceptions per line)
-                        changes.append(json.loads(line))
-                    except Exception:
-                        pass
-        finally:
-            # 3. Always clean up the processed file, regardless of parsing errors
+                event = json.load(f)
+                
+            changes.append(event)
+            # Lo consumimos, lo borramos
+            try:
+                os.remove(processing_fpath)
+            except OSError:
+                pass
+        except Exception:
             try:
                 os.remove(processing_fpath)
             except OSError:
@@ -63,22 +70,24 @@ def main():
     if not changes:
         emit_empty_and_exit()
 
-    summary = "El usuario ha modificado código manualmente en el editor (Neovim). Aquí tienes el diff:\n"
+    # Sort changes by timestamp
+    changes.sort(key=lambda x: x.get("timestamp", 0))
+
+    summary = "El usuario ha modificado código manualmente. Aquí tienes los diffs capturados:\n"
     for change in changes:
         diff = change.get('diff', '')
-        # 4. Context Blowout prevention
         if len(diff) > MAX_DIFF_LENGTH:
             diff = diff[:MAX_DIFF_LENGTH] + "\n...[DIFF TRUNCADO: Demasiado grande para el contexto]"
             
-        summary += f"\nArchivo: {change.get('file', 'Desconocido')}\nDiff:\n{diff}\n"
+        summary += f"\nArchivo: {change.get('file', 'Desconocido')} (Origen: {change.get('origin', 'Desconocido')})\nDiff:\n{diff}\n"
 
-    # 5. Escribir log de auditoría persistente
-    audit_log_path = os.path.join(agents_dir, "injection_audit.log")
+    # Auditoría
+    audit_log_path = os.path.expanduser("~/.local/share/usertracker/audit.log")
     try:
         from datetime import datetime
         with open(audit_log_path, "a") as logf:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            logf.write(f"[{ts}] --- INYECCIÓN ENVIADA A ANTIGRAVITY ---\n")
+            logf.write(f"[{ts}] --- INYECCIÓN ENVIADA AL WORKSPACE {active_workspace} ---\n")
             logf.write(summary + "\n\n")
     except Exception:
         pass
