@@ -8,9 +8,9 @@ En lugar de configuraciones tediosas por repositorio, este sistema funciona a ni
 1. **Neovim (Lua)**: Un plugin en tu configuración de Neovim detecta modificaciones manuales en cualquier buffer, calcula el delta, y lo guarda bajo `.agents/nvim_state_<PID>.json` en la raíz del repositorio actual.
 2. **Antigravity (Python/Hook)**: Un hook global en `~/.gemini/config/hooks.json` se ejecuta antes de cada turno. Lee estos archivos JSON, inyecta el delta como un mensaje efímero, y los purga, evitando ensuciar tu contexto.
 
-## Compatibilidad NixOS
+## Requisitos
 
-El script de Antigravity utiliza un shebang de `nix-shell` para ejecutar Python 3 de forma efímera. Esto asegura que el hook funcione sin requerir una instalación global impura de Python en tu sistema.
+El script de Antigravity (Hook) está escrito en Python 3. Requiere que `python3` esté disponible en el `$PATH` de tu sistema (usando el shebang estándar `#!/usr/bin/env python3`).
 
 ## Instalación
 
