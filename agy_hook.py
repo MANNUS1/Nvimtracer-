@@ -72,6 +72,17 @@ def main():
             
         summary += f"\nArchivo: {change.get('file', 'Desconocido')}\nDiff:\n{diff}\n"
 
+    # 5. Escribir log de auditoría persistente
+    audit_log_path = os.path.join(agents_dir, "injection_audit.log")
+    try:
+        from datetime import datetime
+        with open(audit_log_path, "a") as logf:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            logf.write(f"[{ts}] --- INYECCIÓN ENVIADA A ANTIGRAVITY ---\n")
+            logf.write(summary + "\n\n")
+    except Exception:
+        pass
+
     out = {
         "injectSteps": [
             {
