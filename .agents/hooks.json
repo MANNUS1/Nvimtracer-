@@ -1,0 +1,16 @@
+{
+  "nvim-manual-delta": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "nix-shell -p python3 --run 'python3 scripts/smart-diff.py'"
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "nix-shell -p python3 --run 'python3 scripts/snapshot.py'"
+      }
+    ]
+  }
+}
