@@ -88,34 +88,54 @@ local function generate_delta(bufnr)
 end
 
 local function inject_snacks_hook()
-    local ok, actions = pcall(require, "snacks.explorer.actions")
-    if not ok then return end
-    
-    -- Evitar parchear múltiples veces si recargas la configuración
-    if actions._agy_patched then return end
-    actions._agy_patched = true
-    
-    local original_trash = actions.trash
-    actions.trash = function(path, ...)
-        local root = get_project_root(path)
-        local agents_dir = root .. "/.agents"
-        if vim.fn.isdirectory(agents_dir) == 0 then vim.fn.mkdir(agents_dir, "p") end
-        local state_file = string.format("%s/nvim_state_%s.json", agents_dir, vim.fn.getpid())
-        
-        -- Fabricar un diff de eliminación y enviarlo a la cola
-        local json_data = {
-            file = path,
-            diff = "--- " .. path .. "\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-[ARCHIVO ELIMINADO VÍA SNACKS.EXPLORER]",
-            timestamp = os.time()
-        }
-        local f = io.open(state_file, "a")
-        if f then
-            f:write(vim.fn.json_encode(json_data) .. "\n")
-            f:close()
+    -- 1. Patch Delete (trash)
+    local ok_actions, actions = pcall(require, "snacks.explorer.actions")
+    if ok_actions and type(actions.trash) == "function" and not actions._agy_patched_trash then
+        actions._agy_patched_trash = true
+        local original_trash = actions.trash
+        actions.trash = function(path, ...)
+            local root = get_project_root(path)
+            local agents_dir = root .. "/.agents"
+            if vim.fn.isdirectory(agents_dir) == 0 then vim.fn.mkdir(agents_dir, "p") end
+            local state_file = string.format("%s/nvim_state_%s.json", agents_dir, vim.fn.getpid())
+            
+            local json_data = {
+                file = path,
+                diff = "--- " .. path .. "\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-[ARCHIVO ELIMINADO VÍA SNACKS.EXPLORER]",
+                timestamp = os.time()
+            }
+            local f = io.open(state_file, "a")
+            if f then f:write(vim.fn.json_encode(json_data) .. "\n"); f:close() end
+            
+            return original_trash(path, ...)
         end
-        
-        -- Ejecutar el borrado real de Snacks
-        return original_trash(path, ...)
+    end
+
+    -- 2. Patch Rename & Move
+    local ok_rename, rename = pcall(require, "snacks.rename")
+    if ok_rename and type(rename.rename_file) == "function" and not rename._agy_patched_rename then
+        rename._agy_patched_rename = true
+        local original_rename = rename.rename_file
+        rename.rename_file = function(opts)
+            local orig_on_rename = opts.on_rename
+            opts.on_rename = function(new_path, old_path)
+                local root = get_project_root(old_path)
+                local agents_dir = root .. "/.agents"
+                if vim.fn.isdirectory(agents_dir) == 0 then vim.fn.mkdir(agents_dir, "p") end
+                local state_file = string.format("%s/nvim_state_%s.json", agents_dir, vim.fn.getpid())
+                
+                local json_data = {
+                    file = old_path,
+                    diff = string.format("--- %s\n+++ %s\n@@ -0,0 +1,1 @@\n+[ARCHIVO RENOMBRADO/MOVIDO VÍA SNACKS A: %s]", old_path, new_path, new_path),
+                    timestamp = os.time()
+                }
+                local f = io.open(state_file, "a")
+                if f then f:write(vim.fn.json_encode(json_data) .. "\n"); f:close() end
+                
+                if orig_on_rename then orig_on_rename(new_path, old_path) end
+            end
+            return original_rename(opts)
+        end
     end
 end
 
