@@ -87,6 +87,38 @@ local function generate_delta(bufnr)
     baselines[bufnr] = new_content
 end
 
+local function inject_snacks_hook()
+    local ok, actions = pcall(require, "snacks.explorer.actions")
+    if not ok then return end
+    
+    -- Evitar parchear múltiples veces si recargas la configuración
+    if actions._agy_patched then return end
+    actions._agy_patched = true
+    
+    local original_trash = actions.trash
+    actions.trash = function(path, ...)
+        local root = get_project_root(path)
+        local agents_dir = root .. "/.agents"
+        if vim.fn.isdirectory(agents_dir) == 0 then vim.fn.mkdir(agents_dir, "p") end
+        local state_file = string.format("%s/nvim_state_%s.json", agents_dir, vim.fn.getpid())
+        
+        -- Fabricar un diff de eliminación y enviarlo a la cola
+        local json_data = {
+            file = path,
+            diff = "--- " .. path .. "\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-[ARCHIVO ELIMINADO VÍA SNACKS.EXPLORER]",
+            timestamp = os.time()
+        }
+        local f = io.open(state_file, "a")
+        if f then
+            f:write(vim.fn.json_encode(json_data) .. "\n")
+            f:close()
+        end
+        
+        -- Ejecutar el borrado real de Snacks
+        return original_trash(path, ...)
+    end
+end
+
 function M.setup()
     vim.api.nvim_create_autocmd({"BufReadPost", "FileChangedShellPost"}, {
         callback = function(args)
@@ -97,6 +129,19 @@ function M.setup()
     vim.api.nvim_create_autocmd("BufWritePost", {
         callback = function(args)
             generate_delta(args.buf)
+        end
+    })
+
+    -- Hook snacks explorer si ya está cargado
+    inject_snacks_hook()
+    
+    -- Hook snacks explorer si se carga de forma lazy
+    vim.api.nvim_create_autocmd("User", {
+        pattern = "LazyLoad",
+        callback = function(args)
+            if args.data == "snacks.nvim" then
+                inject_snacks_hook()
+            end
         end
     })
 end
